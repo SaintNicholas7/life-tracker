@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Life Tracker</title>
+<meta name="theme-color" content="#f8f9fc">
+<meta name="color-scheme" content="light">
+<meta name="description" content="Track work, earnings, social media, sleep and leisure time.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Tracker">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<main id="app" aria-live="polite"></main>
+
+<div id="scrim" data-act="dismiss"></div>
+<div id="menu" role="menu" aria-label="Log time"></div>
+<div id="sheet" role="dialog" aria-modal="true"></div>
+<div id="toast" role="status"></div>
+
+<button id="fab" data-act="fab" aria-label="Log time" aria-expanded="false"></button>
+
+<script src="app.js"></script>
+</body>
+</html>
