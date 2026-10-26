@@ -17,6 +17,7 @@
     left: '<svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg>',
     right: '<svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>',
     back: '<svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>',
+    cloud: '<svg viewBox="0 0 24 24"><path d="M7 18.5a4.2 4.2 0 0 1-.7-8.3A6 6 0 0 1 17.800 10 4.300 4.300 0 0 1 17.500 18.500z"/></svg>',
     sliders: '<svg viewBox="0 0 24 24"><path d="M4 7h9M19 7h1M4 17h1M11 17h9"/><circle cx="16" cy="7" r="2.4"/><circle cx="8" cy="17" r="2.4"/></svg>',
   };
   const ic = (n) => ICONS[n];
@@ -100,9 +101,25 @@
     if (h > 0) day[cat] = h; else delete day[cat];
     setMeta(day, 'times', cat, h > 0 && times && (times.start || times.end) ? times : null);
     setMeta(day, 'notes', cat, h > 0 && note ? note : null);
-    if (!ORDER.some((c) => day[c])) delete S.days[k];
+    if (!ORDER.some((c) => day[c])) delete S.days[k]; else day.u = Date.now();
     save();
+    markDirty(k);
   }
+
+  // Dates (or '@settings') whose latest version has not reached the cloud yet.
+  const DIRTY_KEY = 'lt.dirty';
+  function getDirty() {
+    try { return JSON.parse(localStorage.getItem(DIRTY_KEY)) || []; } catch (e) { return []; }
+  }
+  function setDirty(list) {
+    try { localStorage.setItem(DIRTY_KEY, JSON.stringify(list)); } catch (e) { /* ignore */ }
+  }
+  function markDirty(k, quiet) {
+    const list = getDirty();
+    if (!list.includes(k)) { list.push(k); setDirty(list); }
+    if (!quiet && window.LT && window.LT.sync) window.LT.sync.flush();
+  }
+  function clearDirty(k) { setDirty(getDirty().filter((x) => x !== k)); }
 
   // 24-hour time: "9" / "900" / "0900" / "09:00" all become "09:00". Returns '' if empty, null if invalid.
   function cleanTime(str) {
@@ -120,6 +137,18 @@
   const app = $('#app');
   const sheet = $('#sheet');
   const body = document.body;
+
+  // Shared with sync.js, which loads separately and may not load at all (e.g. offline).
+  const LT = window.LT = {
+    syncState: { state: 'loading', email: '', error: '' },
+    sync: null,
+    state: () => S,
+    persist: () => save(),
+    render: () => render(),
+    toast: (m) => toast(m),
+    getDirty, clearDirty, markDirty,
+    onSyncState: () => updateSyncUI(),
+  };
 
   let route = 'home';
   let vm = null; // visible month in a calendar screen
@@ -163,7 +192,10 @@
     return `
       <header class="top">
         <div><h1>${hello}</h1><p>Week of ${fmtShort(ws)} – ${fmtShort(addDays(ws, 6))}</p></div>
-        <button class="icon-btn" data-act="settings" aria-label="Settings">${ic('sliders')}</button>
+        <div class="top-btns">
+          <button class="icon-btn cloud-${LT.syncState.state}" data-act="settings" id="cloudBtn" aria-label="Cloud sync status" title="Cloud sync">${ic('cloud')}</button>
+          <button class="icon-btn" data-act="settings" aria-label="Settings">${ic('sliders')}</button>
+        </div>
       </header>
       <section class="grid">
         ${card('money', 'c-money', 'dollar', 'You made', fm(money), empty ? 'Tap + to log your first day' : `this week · ${fm(S.settings.rate)}/hr`, ks.map(earned), todayIdx, 'hero')}
@@ -374,7 +406,7 @@
     sheet.className = 'c-work';
     sheet.innerHTML = `
       <div class="grab"></div>
-      <div class="sh-head"><span class="badge">${ic('sliders')}</span><div><h2>Settings</h2><p>Stored only on this device</p></div></div>
+      <div class="sh-head"><span class="badge">${ic('sliders')}</span><div><h2>Settings</h2><p>Saved on this device, and in the cloud when signed in</p></div></div>
       <label class="fld">Hourly pay for field hours ($)<input type="number" id="setRate" inputmode="decimal" min="0" step="0.01" value="${S.settings.rate}"></label>
       <label class="fld" style="display:flex;align-items:center;gap:10px;text-transform:none;letter-spacing:0;font-size:14px;font-weight:500;margin-top:-4px">
         <input type="checkbox" id="setAll" checked style="width:20px;height:20px;margin:0"> Apply this rate to past days too
@@ -382,6 +414,7 @@
       <label class="fld">Week starts on
         <select id="setWeek"><option value="1" ${S.settings.weekStart === 1 ? 'selected' : ''}>Monday</option><option value="0" ${S.settings.weekStart === 0 ? 'selected' : ''}>Sunday</option></select>
       </label>
+      <div class="cloud-box" id="cloudBox">${cloudHTML()}</div>
       <div class="row2">
         <button class="btn line" data-act="export">Back up</button>
         <button class="btn line" data-act="import">Restore</button>
@@ -391,18 +424,44 @@
     body.classList.add('sheet-open');
   }
 
+  function cloudHTML() {
+    const s = LT.syncState;
+    if (s.state === 'unavailable') {
+      return `<b>Cloud sync</b><p>Not available right now (no connection?). Your data is safe on this device and will sync later.</p>`;
+    }
+    if (s.state === 'loading') return `<b>Cloud sync</b><p>Connecting…</p>`;
+    if (s.state === 'signedout') {
+      return `<b>Cloud sync</b><p>${s.error || 'Sign in to keep a copy online and share your data across your devices.'}</p>
+        <button class="btn line" data-act="signin">Sign in with Google</button>`;
+    }
+    const msg = s.state === 'syncing' ? 'Syncing…' : s.state === 'error' ? (s.error || 'Sync problem') : 'All changes saved to the cloud';
+    return `<b>Cloud sync · ${s.email}</b><p>${msg}</p><button class="btn line" data-act="signout">Sign out</button>`;
+  }
+
+  function updateSyncUI() {
+    const btn = $('#cloudBtn');
+    if (btn) btn.className = `icon-btn cloud-${LT.syncState.state}`;
+    const box = $('#cloudBox');
+    if (box) box.innerHTML = cloudHTML();
+  }
+
   function saveSettings() {
     const rate = parseFloat($('#setRate').value);
     if (Number.isNaN(rate) || rate < 0) return toast('Enter a valid hourly rate');
     if (rate !== S.settings.rate) {
+      const now = Date.now();
       for (const k in S.days) {
         if ($('#setAll').checked) delete S.days[k].rate;
         else if (S.days[k].rate == null && S.days[k].work) S.days[k].rate = S.settings.rate; // keep old days at the old rate
+        S.days[k].u = now;
+        markDirty(k, true);
       }
       S.settings.rate = rate;
     }
     S.settings.weekStart = Number($('#setWeek').value);
+    S.settings.u = Date.now();
     save();
+    markDirty('@settings');
     closeAll();
     render();
     toast('Settings saved');
@@ -427,7 +486,12 @@
         if (!data || typeof data.days !== 'object') throw new Error('bad file');
         if (!confirm('Replace everything on this device with the backup?')) return;
         S = { settings: Object.assign({}, DEFAULTS, data.settings), days: data.days };
+        const now = Date.now();
+        for (const k in S.days) { S.days[k].u = now; markDirty(k, true); }
+        S.settings.u = now;
         save();
+        markDirty('@settings');
+        markDirty('@replace');
         closeAll();
         render();
         toast('Backup restored');
@@ -471,6 +535,8 @@
     else if (a === 'save') saveSheet();
     else if (a === 'remove') { setHours(sh.date, sh.cat, 0); closeAll(); render(); toast('Entry removed'); }
     else if (a === 'settings') openSettings();
+    else if (a === 'signin') { if (LT.sync) LT.sync.signIn(); else toast('Cloud sync is not available right now'); }
+    else if (a === 'signout') { if (LT.sync && confirm('Sign out? Your data stays on this device.')) LT.sync.signOut(); }
     else if (a === 'save-settings') saveSettings();
     else if (a === 'export') exportData();
     else if (a === 'import') $('#setFile').click();
@@ -505,6 +571,11 @@
   vm = thisMonth();
   render();
   try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch (e) { /* optional */ }
+  import('./sync.js').catch((e) => {
+    console.warn('Cloud sync unavailable', e);
+    LT.syncState = { state: 'unavailable', email: '', error: '' };
+    updateSyncUI();
+  });
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
     navigator.serviceWorker.register('sw.js').catch(() => {});
   }

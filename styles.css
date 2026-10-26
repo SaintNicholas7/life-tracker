@@ -51,6 +51,15 @@ svg .f { fill: currentColor; stroke: none; }
 }
 .icon-btn:hover { background: #eceff4; }
 
+.top-btns { display: flex; gap: 2px; }
+.cloud-synced { color: #188038; }
+.cloud-syncing { color: #1a73e8; animation: pulse 1.2s ease-in-out infinite; }
+.cloud-error { color: #d93025; }
+@keyframes pulse { 50% { opacity: .35; } }
+.cloud-box { background: #f6f8fb; border-radius: 18px; padding: 14px 16px; margin: 0 0 14px; font-size: 14px; }
+.cloud-box b { display: block; font-size: 14px; word-break: break-all; }
+.cloud-box p { margin: 4px 0 10px; color: var(--muted); line-height: 1.4; }
+.cloud-box .btn { height: 44px; width: 100%; font-size: 15px; }
 .grid { display: grid; gap: 14px; grid-template-columns: 1fr 1fr; }
 .card {
   position: relative; display: flex; flex-direction: column; gap: 6px;
